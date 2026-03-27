@@ -7,13 +7,14 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/MaXiMo000/Quiz-App"
+    "url": "https://github.com/MeAkash77/QuizNest-Full-Stack-AI-Powered-Quiz-Platform"
   },
   "scripts": {
-    "dev": "vite",
+    "dev": "vite --host",
     "build": "vite build",
     "lint": "eslint .",
-    "preview": "vite preview",
+    "preview": "vite preview --host --port 5173",
+    "start": "vite preview --host --port 5173",
     "test": "vitest run --reporter=verbose",
     "test:watch": "vitest",
     "test:ci": "vitest run --reporter=verbose --no-coverage --run --bail=1"
