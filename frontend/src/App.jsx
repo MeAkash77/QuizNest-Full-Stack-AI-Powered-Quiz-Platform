@@ -1,4 +1,3 @@
-import AuthSuccess from "./pages/AuthSuccess";
 import React, { Suspense, lazy, useEffect } from "react";
 import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
 import AuthWrapper from "./components/AuthWrapper";
@@ -59,6 +58,9 @@ import Bookmarks from "./pages/Bookmarks";
 import SearchResults from "./pages/SearchResults";
 import ActivityFeed from "./pages/ActivityFeed";
 import UserProfile from "./pages/UserProfile";
+
+// ✅ Google OAuth Success Page (lazy loaded)
+const AuthSuccess = lazy(() => import("./pages/AuthSuccess"));
 
 // ✨ Import new enhanced components
 import EnhancedDashboard from "./components/EnhancedDashboard";
@@ -248,6 +250,8 @@ const App = () => {
                             <Route path="/login" element={<Login />} />
                             <Route path="/register" element={<Register />} />
                             <Route path="/google-auth" element={<GoogleAuth />} />
+                            {/* ✅ Google OAuth Success Route */}
+                            <Route path="/auth/success" element={<AuthSuccess />} />
                             <Route path="/pwa-test" element={<PWAInstallTest />} />
 
                             {/* Protected Routes */}
