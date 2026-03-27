@@ -1,0 +1,530 @@
+import Friend from "../models/Friend.js";
+import UserQuiz from "../models/User.js";
+import logger from "../utils/logger.js";
+import { sendSuccess, sendError, sendValidationError, sendNotFound, sendForbidden, sendCreated } from "../utils/responseHelper.js";
+import AppError from "../utils/AppError.js";
+
+// Send friend request
+export const sendFriendRequest = async (req, res) => {
+    logger.info(`User ${req.user.id} sending friend request to ${req.body.recipientId}`);
+    try {
+        const { recipientId } = req.body;
+        const requesterId = req.user.id;
+
+        // Validation
+        if (!recipientId) {
+            logger.warn(`User ${requesterId} tried to send a friend request without a recipient ID`);
+            return sendValidationError(res, { recipientId: "Recipient ID is required" }, "Recipient ID is required");
+        }
+
+        if (requesterId === recipientId) {
+            logger.warn(`User ${requesterId} tried to send a friend request to themselves`);
+            return sendValidationError(res, { recipientId: "Cannot send friend request to yourself" }, "Cannot send friend request to yourself");
+        }
+
+        // Check if recipient exists
+        const recipient = await UserQuiz.findById(recipientId);
+        if (!recipient) {
+            logger.warn(`User ${requesterId} tried to send a friend request to a non-existent user ${recipientId}`);
+            return sendNotFound(res, "User");
+        }
+
+        // Check privacy settings
+        if (!recipient.social?.privacy?.allowFriendRequests) {
+            logger.warn(`User ${requesterId} tried to send a friend request to a user ${recipientId} who is not accepting requests`);
+            return sendForbidden(res, "This user is not accepting friend requests");
+        }
+
+        // Check if they're already friends
+        const existingFriend = await Friend.findOne({
+            $or: [
+                { requester: requesterId, recipient: recipientId },
+                { requester: recipientId, recipient: requesterId }
+            ]
+        });
+
+        if (existingFriend) {
+            logger.warn(`User ${requesterId} tried to send a friend request to ${recipientId} but a relationship already exists with status ${existingFriend.status}`);
+            if (existingFriend.status === "accepted") {
+                return sendError(res, "You are already friends", 400);
+            } else if (existingFriend.status === "pending") {
+                return sendError(res, "Friend request already sent", 400);
+            } else if (existingFriend.status === "blocked") {
+                return sendForbidden(res, "Cannot send friend request");
+            }
+        }
+
+        // Create friend request
+        const friendRequest = new Friend({
+            requester: requesterId,
+            recipient: recipientId,
+            status: "pending"
+        });
+
+        await friendRequest.save();
+
+        // Update users' friend request arrays
+        await UserQuiz.findByIdAndUpdate(requesterId, {
+            $push: { "social.friendRequests.sent": friendRequest._id }
+        });
+
+        await UserQuiz.findByIdAndUpdate(recipientId, {
+            $push: { "social.friendRequests.received": friendRequest._id }
+        });
+
+        logger.info(`Friend request sent successfully from ${requesterId} to ${recipientId}`);
+        return sendCreated(res, await friendRequest.populate("recipient", "name email"), "Friend request sent successfully");
+
+    } catch (error) {
+        logger.error({ message: `Error sending friend request from ${req.user.id} to ${req.body.recipientId}`, error: error.message, stack: error.stack });
+        throw new AppError("Server error", 500);
+    }
+};
+
+// Accept/decline friend request
+export const respondToFriendRequest = async (req, res) => {
+    logger.info(`User ${req.user.id} responding to friend request ${req.body.requestId} with action ${req.body.action}`);
+    try {
+        const { requestId, action } = req.body; // action: 'accept' or 'decline'
+        const userId = req.user.id;
+
+        if (!["accept", "decline"].includes(action)) {
+            logger.warn(`Invalid action "${action}" for friend request response by user ${userId}`);
+            return sendValidationError(res, { action: "Invalid action" }, "Invalid action");
+        }
+
+        const friendRequest = await Friend.findById(requestId);
+        if (!friendRequest) {
+            logger.warn(`Friend request not found: ${requestId}`);
+            return sendNotFound(res, "Friend request");
+        }
+
+        // Check if user is the recipient
+        if (friendRequest.recipient.toString() !== userId) {
+            logger.warn(`User ${userId} not authorized to respond to friend request ${requestId}`);
+            return sendForbidden(res, "Not authorized to respond to this request");
+        }
+
+        if (friendRequest.status !== "pending") {
+            logger.warn(`User ${userId} attempted to respond to already actioned friend request ${requestId}`);
+            return sendError(res, "Friend request already responded to", 400);
+        }
+
+        // Update request status
+        friendRequest.status = action === "accept" ? "accepted" : "declined";
+        friendRequest.responseDate = new Date();
+        await friendRequest.save();
+
+        if (action === "accept") {
+            // Add to friends list for both users
+            await UserQuiz.findByIdAndUpdate(friendRequest.requester, {
+                $push: { "social.friends": friendRequest.recipient }
+            });
+
+            await UserQuiz.findByIdAndUpdate(friendRequest.recipient, {
+                $push: { "social.friends": friendRequest.requester }
+            });
+
+            // ✅ Create friend added notification and activity for both users
+            try {
+                const { createActivity } = await import("../controllers/activityController.js");
+                const { createNotification } = await import("../controllers/notificationController.js");
+
+                const requesterUser = await UserQuiz.findById(friendRequest.requester).select("name");
+                const recipientUser = await UserQuiz.findById(friendRequest.recipient).select("name");
+
+                // Notify requester
+                await createActivity(friendRequest.requester, "friend_added", {
+                    friendId: friendRequest.recipient,
+                    friendName: recipientUser?.name || "Friend"
+                });
+
+                await createNotification(friendRequest.requester, "friend_request", "New Friend!", `${recipientUser?.name || "User"} accepted your friend request!`, {
+                    userId: friendRequest.recipient,
+                    friendName: recipientUser?.name || "Friend"
+                });
+
+                // Notify recipient
+                await createActivity(friendRequest.recipient, "friend_added", {
+                    friendId: friendRequest.requester,
+                    friendName: requesterUser?.name || "Friend"
+                });
+
+                await createNotification(friendRequest.recipient, "friend_request", "New Friend!", `You are now friends with ${requesterUser?.name || "User"}!`, {
+                    userId: friendRequest.requester,
+                    friendName: requesterUser?.name || "Friend"
+                });
+            } catch (error) {
+                logger.error({ message: "Error creating friend added activity/notification", error: error.message });
+            }
+        }
+
+        // Remove from pending requests
+        await UserQuiz.findByIdAndUpdate(friendRequest.requester, {
+            $pull: { "social.friendRequests.sent": requestId }
+        });
+
+        await UserQuiz.findByIdAndUpdate(friendRequest.recipient, {
+            $pull: { "social.friendRequests.received": requestId }
+        });
+
+        logger.info(`User ${userId} successfully responded to friend request ${requestId} with action ${action}`);
+        return sendSuccess(res, await friendRequest.populate(["requester", "recipient"], "name email"), `Friend request ${action}ed successfully`);
+
+    } catch (error) {
+        logger.error({ message: `Error responding to friend request ${req.body.requestId} by user ${req.user.id}`, error: error.message, stack: error.stack });
+        throw new AppError("Server error", 500);
+    }
+};
+
+// Get user's friends
+export const getFriends = async (req, res) => {
+    logger.info(`Getting friends for user ${req.user.id}`);
+    try {
+        const userId = req.user.id;
+
+        const user = await UserQuiz.findById(userId)
+            .populate("social.friends", "name email level xp lastSeen isOnline social.privacy")
+            .select("social.friends");
+
+        if (!user) {
+            logger.warn(`User not found: ${userId} when getting friends`);
+            return sendNotFound(res, "User");
+        }
+
+        // Filter friends based on privacy settings
+        const visibleFriends = (user.social?.friends || []).filter(friend => {
+            const privacy = friend.social?.privacy;
+            return !privacy || privacy.profileVisibility !== "private";
+        });
+
+        logger.info(`Successfully fetched ${visibleFriends.length} friends for user ${userId}`);
+        return sendSuccess(res, {
+            friends: visibleFriends,
+            totalFriends: visibleFriends.length
+        }, "Friends fetched successfully");
+
+    } catch (error) {
+        logger.error({ message: `Error getting friends for user ${req.user.id}`, error: error.message, stack: error.stack });
+        throw new AppError("Server error", 500);
+    }
+};
+
+// Get pending friend requests
+export const getPendingRequests = async (req, res) => {
+    logger.info(`Getting pending friend requests for user ${req.user.id}`);
+    try {
+        const userId = req.user.id;
+
+        const sentRequests = await Friend.find({
+            requester: userId,
+            status: "pending"
+        }).populate("recipient", "name email level xp");
+
+        const receivedRequests = await Friend.find({
+            recipient: userId,
+            status: "pending"
+        }).populate("requester", "name email level xp");
+
+        logger.info(`Successfully fetched ${sentRequests.length} sent and ${receivedRequests.length} received pending friend requests for user ${userId}`);
+        return sendSuccess(res, {
+            sent: sentRequests,
+            received: receivedRequests
+        }, "Pending friend requests fetched successfully");
+
+    } catch (error) {
+        logger.error({ message: `Error getting pending friend requests for user ${req.user.id}`, error: error.message, stack: error.stack });
+        throw new AppError("Server error", 500);
+    }
+};
+
+// Remove friend
+export const removeFriend = async (req, res) => {
+    logger.info(`User ${req.user.id} attempting to remove friend ${req.params.friendId}`);
+    try {
+        const { friendId } = req.params;
+        const userId = req.user.id;
+
+        // Find the friendship record
+        const friendship = await Friend.findOne({
+            $or: [
+                { requester: userId, recipient: friendId, status: "accepted" },
+                { requester: friendId, recipient: userId, status: "accepted" }
+            ]
+        });
+
+        if (!friendship) {
+            logger.warn(`Friendship not found between user ${userId} and ${friendId}`);
+            return sendNotFound(res, "Friendship");
+        }
+
+        // Remove friendship record
+        await Friend.findByIdAndDelete(friendship._id);
+
+        // Remove from both users' friends lists
+        await UserQuiz.findByIdAndUpdate(userId, {
+            $pull: { "social.friends": friendId }
+        });
+
+        await UserQuiz.findByIdAndUpdate(friendId, {
+            $pull: { "social.friends": userId }
+        });
+
+        logger.info(`User ${userId} successfully removed friend ${friendId}`);
+        return sendSuccess(res, null, "Friend removed successfully");
+
+    } catch (error) {
+        logger.error({ message: `Error removing friend ${req.params.friendId} for user ${req.user.id}`, error: error.message, stack: error.stack });
+        throw new AppError("Server error", 500);
+    }
+};
+
+// Search for users to add as friends
+export const searchUsers = async (req, res) => {
+    logger.info(`User ${req.user.id} searching for users with query "${req.query.query}"`);
+    try {
+        const { query } = req.query;
+        const userId = req.user.id;
+
+        if (!query || query.length < 2) {
+            logger.warn(`User ${userId} made a search with an invalid query: "${query}"`);
+            return sendValidationError(res, { query: "Search query must be at least 2 characters" }, "Search query must be at least 2 characters");
+        }
+
+        // Get current user's friends and pending requests
+        const currentUser = await UserQuiz.findById(userId)
+            .populate("social.friends", "_id")
+            .populate("social.friendRequests.sent", "recipient")
+            .populate("social.friendRequests.received", "requester");
+
+        const friendIds = (currentUser.social?.friends || []).map(f => f._id.toString());
+        const sentRequestIds = (currentUser.social?.friendRequests?.sent || [])
+            .map(req => req.recipient.toString());
+        const receivedRequestIds = (currentUser.social?.friendRequests?.received || [])
+            .map(req => req.requester.toString());
+
+        // SECURITY: Escape special regex characters to prevent ReDoS attacks
+        const escapedQuery = query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+        // Search for users
+        const users = await UserQuiz.find({
+            $and: [
+                {
+                    $or: [
+                        { name: { $regex: escapedQuery, $options: "i" } },
+                        { email: { $regex: escapedQuery, $options: "i" } }
+                    ]
+                },
+                { _id: { $ne: userId } }, // Exclude current user
+                { _id: { $nin: friendIds } }, // Exclude current friends
+                { _id: { $nin: sentRequestIds } }, // Exclude users with pending sent requests
+                { _id: { $nin: receivedRequestIds } }, // Exclude users with pending received requests
+                { "social.privacy.profileVisibility": { $ne: "private" } } // Exclude private profiles
+            ]
+        })
+        .select("name email level xp social.privacy")
+        .limit(20);
+
+        logger.info(`Found ${users.length} users for query "${query}"`);
+        return sendSuccess(res, { users }, "Users searched successfully");
+
+    } catch (error) {
+        logger.error({ message: `Error searching users with query "${req.query.query}"`, error: error.message, stack: error.stack });
+        throw new AppError("Server error", 500);
+    }
+};
+
+// Get friend's quiz progress (for comparison)
+export const getFriendProgress = async (req, res) => {
+    logger.info(`User ${req.user.id} getting progress for friend ${req.params.friendId}`);
+    try {
+        const { friendId } = req.params;
+        const userId = req.user.id;
+
+        // Check if they are friends
+        const friendship = await Friend.findOne({
+            $or: [
+                { requester: userId, recipient: friendId, status: "accepted" },
+                { requester: friendId, recipient: userId, status: "accepted" }
+            ]
+        });
+
+        if (!friendship) {
+            logger.warn(`User ${userId} not authorized to view progress of user ${friendId}`);
+            return sendForbidden(res, "Not authorized to view this user's progress");
+        }
+
+        const friend = await UserQuiz.findById(friendId)
+            .select("name level xp badges totalXP loginStreak quizStreak social.privacy");
+
+        if (!friend) {
+            logger.warn(`Friend not found: ${friendId}`);
+            return sendNotFound(res, "Friend");
+        }
+
+        // Check privacy settings
+        if (!friend.social?.privacy?.showProgressToFriends) {
+            logger.warn(`User ${userId} attempted to view progress of user ${friendId} who has disabled progress sharing`);
+            return sendForbidden(res, "This user has disabled progress sharing");
+        }
+
+        logger.info(`Successfully fetched progress for friend ${friendId}`);
+        return sendSuccess(res, {
+            friend: {
+                name: friend.name,
+                level: friend.level,
+                xp: friend.xp,
+                totalXP: friend.totalXP,
+                badges: friend.badges,
+                loginStreak: friend.loginStreak,
+                quizStreak: friend.quizStreak
+            }
+        }, "Friend progress fetched successfully");
+
+    } catch (error) {
+        logger.error({ message: `Error getting friend progress for user ${req.user.id} and friend ${req.params.friendId}`, error: error.message, stack: error.stack });
+        throw new AppError("Server error", 500);
+    }
+};
+
+// Block user
+export const blockUser = async (req, res) => {
+    logger.info(`User ${req.user.id} attempting to block user ${req.params.userId}`);
+    try {
+        const { userId: targetUserId } = req.params;
+        const userId = req.user.id;
+
+        if (userId === targetUserId) {
+            logger.warn(`User ${userId} attempted to block themselves`);
+            return sendValidationError(res, { userId: "Cannot block yourself" }, "Cannot block yourself");
+        }
+
+        // Check if target user exists
+        const targetUser = await UserQuiz.findById(targetUserId);
+        if (!targetUser) {
+            logger.warn(`User not found: ${targetUserId} when blocking`);
+            return sendNotFound(res, "User");
+        }
+
+        // Find existing relationship
+        let relationship = await Friend.findOne({
+            $or: [
+                { requester: userId, recipient: targetUserId },
+                { requester: targetUserId, recipient: userId }
+            ]
+        });
+
+        if (relationship) {
+            // Update existing relationship to blocked
+            relationship.status = "blocked";
+            relationship.responseDate = new Date();
+
+            // Ensure the blocker is always the requester for blocked relationships
+            if (relationship.recipient.toString() === userId) {
+                // Swap requester and recipient
+                const temp = relationship.requester;
+                relationship.requester = relationship.recipient;
+                relationship.recipient = temp;
+            }
+
+            await relationship.save();
+
+            // Remove from friends list if they were friends
+            await UserQuiz.findByIdAndUpdate(userId, {
+                $pull: { "social.friends": targetUserId }
+            });
+            await UserQuiz.findByIdAndUpdate(targetUserId, {
+                $pull: { "social.friends": userId }
+            });
+
+        } else {
+            // Create new blocked relationship
+            relationship = new Friend({
+                requester: userId,
+                recipient: targetUserId,
+                status: "blocked"
+            });
+            await relationship.save();
+        }
+
+        // Remove from friend requests if any
+        await UserQuiz.findByIdAndUpdate(userId, {
+            $pull: {
+                "social.friendRequests.sent": { $in: [relationship._id] },
+                "social.friendRequests.received": { $in: [relationship._id] }
+            }
+        });
+        await UserQuiz.findByIdAndUpdate(targetUserId, {
+            $pull: {
+                "social.friendRequests.sent": { $in: [relationship._id] },
+                "social.friendRequests.received": { $in: [relationship._id] }
+            }
+        });
+
+        logger.info(`User ${userId} successfully blocked user ${targetUserId}`);
+        return sendSuccess(res, await relationship.populate("recipient", "name email"), "User blocked successfully");
+
+    } catch (error) {
+        logger.error({ message: `Error blocking user ${req.params.userId} by user ${req.user.id}`, error: error.message, stack: error.stack });
+        throw new AppError("Server error", 500);
+    }
+};
+
+// Unblock user
+export const unblockUser = async (req, res) => {
+    logger.info(`User ${req.user.id} attempting to unblock user ${req.params.userId}`);
+    try {
+        const { userId: targetUserId } = req.params;
+        const userId = req.user.id;
+
+        // Find blocked relationship where current user is the blocker
+        const relationship = await Friend.findOne({
+            requester: userId,
+            recipient: targetUserId,
+            status: "blocked"
+        });
+
+        if (!relationship) {
+            logger.warn(`No blocked relationship found for user ${userId} and target user ${targetUserId}`);
+            return sendNotFound(res, "Blocked relationship");
+        }
+
+        // Remove the blocked relationship
+        await Friend.findByIdAndDelete(relationship._id);
+
+        logger.info(`User ${userId} successfully unblocked user ${targetUserId}`);
+        return sendSuccess(res, null, "User unblocked successfully");
+
+    } catch (error) {
+        logger.error({ message: `Error unblocking user ${req.params.userId} by user ${req.user.id}`, error: error.message, stack: error.stack });
+        throw new AppError("Server error", 500);
+    }
+};
+
+// Get blocked users
+export const getBlockedUsers = async (req, res) => {
+    logger.info(`Getting blocked users for user ${req.user.id}`);
+    try {
+        const userId = req.user.id;
+
+        const blockedRelationships = await Friend.find({
+            requester: userId,
+            status: "blocked"
+        }).populate("recipient", "name email level");
+
+        const blockedUsers = blockedRelationships.map(rel => ({
+            ...rel.recipient.toObject(),
+            blockedDate: rel.responseDate || rel.createdAt
+        }));
+
+        logger.info(`Successfully fetched ${blockedUsers.length} blocked users for user ${userId}`);
+        return sendSuccess(res, {
+            blockedUsers,
+            totalBlocked: blockedUsers.length
+        }, "Blocked users fetched successfully");
+
+    } catch (error) {
+        logger.error({ message: `Error getting blocked users for user ${req.user.id}`, error: error.message, stack: error.stack });
+        throw new AppError("Server error", 500);
+    }
+};

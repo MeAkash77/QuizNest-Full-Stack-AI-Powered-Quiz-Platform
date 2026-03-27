@@ -1,0 +1,226 @@
+/* Enhanced Mobile Navigation Bar Styles */
+
+.mobile-nav-bar {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background: var(--card-bg-glass);
+  backdrop-filter: blur(20px);
+  border-top: 1px solid var(--card-border);
+  z-index: 1000;
+  display: none;
+  padding: 8px 0 calc(8px + env(safe-area-inset-bottom, 0px));
+  box-shadow: var(--shadow-lg);
+}
+
+@media (max-width: 768px) {
+  .mobile-nav-bar {
+    display: block;
+  }
+}
+
+/* Hide mobile navbar when quiz is in fullscreen */
+body.quiz-fullscreen .mobile-nav-bar {
+  display: none !important;
+  visibility: hidden !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+}
+
+.nav-container {
+  display: flex;
+  justify-content: space-around;
+  align-items: center;
+  max-width: 100%;
+  margin: 0 auto;
+  padding: 0 8px;
+  /* Ensure all items fit properly */
+  min-width: 0;
+  flex-wrap: nowrap;
+}
+
+.mobile-nav-bar .nav-item {
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: center !important;
+  justify-content: center !important;
+  text-decoration: none !important;
+  padding: 6px 8px !important;
+  border-radius: 12px !important;
+  transition: all 0.3s ease !important;
+  min-width: 50px !important;
+  max-width: 80px !important;
+  flex: 1 !important;
+  position: relative !important;
+  /* Enhanced touch interactions */
+  -webkit-tap-highlight-color: transparent !important;
+  touch-action: manipulation !important;
+  user-select: none !important;
+  /* Prevent text overflow */
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+}
+
+/* Menu button specific styles */
+.mobile-nav-bar .menu-button {
+  background: none !important;
+  border: none !important;
+  color: inherit !important;
+  cursor: pointer !important;
+  flex: 0 0 auto !important;
+  max-width: 60px !important;
+}
+
+.nav-icon-container {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  margin-bottom: 4px;
+}
+
+.nav-icon {
+  font-size: 18px;
+  transition: all 0.3s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.nav-label {
+  font-size: 10px;
+  font-weight: 500;
+  transition: all 0.3s ease;
+  text-align: center;
+  line-height: 1.2;
+  margin-top: 2px;
+  /* Prevent text wrapping and overflow */
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+
+.nav-item.active .nav-icon {
+  transform: scale(1.1);
+  filter: drop-shadow(0 0 8px currentColor);
+}
+
+.nav-item.active .nav-label {
+  font-weight: 600;
+  transform: scale(1.05);
+}
+
+.active-indicator {
+  position: absolute;
+  top: -2px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  box-shadow: 0 0 8px currentColor;
+}
+
+/* Enhanced active state animation */
+.nav-item:active {
+  transform: scale(0.95);
+  transition: transform 0.1s ease;
+}
+
+.nav-item:active .nav-icon-container {
+  transform: scale(0.9);
+}
+
+/* Haptic feedback style for supported devices */
+@media (hover: none) and (pointer: coarse) {
+  .nav-item:active {
+    background: var(--card-bg-glass);
+    transform: scale(0.95);
+  }
+}
+
+/* Safe area adjustments for devices with home indicator */
+@supports (padding-bottom: env(safe-area-inset-bottom)) {
+  .mobile-nav-bar {
+    padding-bottom: calc(8px + env(safe-area-inset-bottom));
+  }
+}
+
+/* Theme-based styling */
+@media (prefers-color-scheme: dark) {
+  .mobile-nav-bar {
+    background: var(--bg-dark);
+    border-top-color: var(--card-border);
+  }
+
+  .nav-item:active {
+    background: var(--card-bg-glass);
+  }
+}
+
+/* Landscape orientation adjustments */
+@media (max-width: 768px) and (orientation: landscape) {
+  .mobile-nav-bar {
+    padding: 4px 0 calc(4px + env(safe-area-inset-bottom, 0px));
+  }
+
+  .mobile-nav-bar .nav-item {
+    padding: 6px 10px !important;
+  }
+
+  .nav-icon {
+    font-size: 16px;
+  }
+
+  .nav-label {
+    font-size: 10px;
+  }
+}
+
+/* Ultra-small screens */
+@media (max-width: 320px) {
+  .nav-container {
+    padding: 0 4px;
+    gap: 2px;
+  }
+
+  .mobile-nav-bar .nav-item {
+    min-width: 45px !important;
+    max-width: 70px !important;
+    padding: 4px 6px !important;
+  }
+
+  .nav-icon {
+    font-size: 14px;
+  }
+
+  .nav-label {
+    font-size: 9px;
+  }
+}
+
+/* Extra small screens - prevent navbar cutoff */
+@media (max-width: 280px) {
+  .nav-container {
+    padding: 0 2px;
+    gap: 1px;
+  }
+
+  .mobile-nav-bar .nav-item {
+    min-width: 40px !important;
+    max-width: 60px !important;
+    padding: 3px 4px !important;
+  }
+
+  .nav-icon {
+    font-size: 12px;
+  }
+
+  .nav-label {
+    font-size: 8px;
+  }
+}

@@ -1,0 +1,463 @@
+import StudyGroup from "../models/StudyGroup.js";
+import UserQuiz from "../models/User.js";
+import Quiz from "../models/Quiz.js";
+import logger from "../utils/logger.js";
+import { sendSuccess, sendError, sendValidationError, sendNotFound, sendForbidden, sendCreated } from "../utils/responseHelper.js";
+import AppError from "../utils/AppError.js";
+
+// Create study group
+export const createStudyGroup = async (req, res) => {
+    logger.info(`User ${req.user.id} attempting to create a study group`);
+    try {
+        const { name, description, isPrivate, maxMembers, category, tags } = req.body;
+        const creatorId = req.user.id;
+
+        // Validation
+        if (!name || name.trim().length < 3) {
+            logger.warn(`Invalid study group name: "${name}"`);
+            return sendValidationError(res, { name: "Study group name must be at least 3 characters" }, "Study group name must be at least 3 characters");
+        }
+
+        if (maxMembers && (maxMembers < 2 || maxMembers > 100)) {
+            logger.warn(`Invalid max members value: ${maxMembers}`);
+            return sendValidationError(res, { maxMembers: "Max members must be between 2 and 100" }, "Max members must be between 2 and 100");
+        }
+
+        // Create study group
+        const studyGroup = new StudyGroup({
+            name: name.trim(),
+            description: description?.trim() || "",
+            creator: creatorId,
+            isPrivate: !!isPrivate,
+            maxMembers: maxMembers || 50,
+            category: category?.trim() || "",
+            tags: tags || [],
+            members: [{
+                user: creatorId,
+                role: "admin",
+                joinedAt: new Date()
+            }],
+            activities: []
+        });
+
+        await studyGroup.save();
+
+        try {
+            // Get current user to check their current stats
+            const user = await UserQuiz.findById(creatorId);
+            const currentGroupsCreated = user?.social?.socialStats?.groupsCreated || 0;
+
+            // Add to creator's study groups
+            await UserQuiz.findByIdAndUpdate(creatorId, {
+                $push: {
+                    "social.studyGroups": studyGroup._id
+                },
+                $set: {
+                    "social.socialStats.groupsCreated": currentGroupsCreated + 1
+                }
+            });
+        } catch (userUpdateError) {
+            logger.error({ message: `Error updating user ${creatorId} after group creation`, error: userUpdateError.message, stack: userUpdateError.stack });
+            // If user update fails, we should still return success since the group was created
+            // The user can still access the group, just the stats won't be updated
+        }
+
+        logger.info(`Study group ${studyGroup._id} created successfully by user ${creatorId}`);
+        return sendCreated(res, await studyGroup.populate("creator", "name email level"), "Study group created successfully");
+
+    } catch (error) {
+        logger.error({ message: `Error creating study group by user ${req.user.id}`, error: error.message, stack: error.stack });
+        throw new AppError("Server error", 500);
+    }
+};
+
+// Join study group
+export const joinStudyGroup = async (req, res) => {
+    logger.info(`User ${req.user.id} attempting to join study group ${req.params.groupId}`);
+    try {
+        const { groupId } = req.params;
+        const userId = req.user.id;
+
+        const studyGroup = await StudyGroup.findById(groupId);
+        if (!studyGroup) {
+            logger.warn(`Study group not found: ${groupId} when user ${userId} attempted to join`);
+            return sendNotFound(res, "Study group");
+        }
+
+        if (!studyGroup.isActive) {
+            logger.warn(`User ${userId} attempted to join inactive study group ${groupId}`);
+            return sendError(res, "This study group is no longer active", 400);
+        }
+
+        // Check if already a member
+        const isMember = studyGroup.members.some(member =>
+            member.user.toString() === userId
+        );
+
+        if (isMember) {
+            logger.warn(`User ${userId} attempted to join study group ${groupId} they are already in`);
+            return sendError(res, "You are already a member of this group", 400);
+        }
+
+        // Check if group is full
+        if (studyGroup.members.length >= studyGroup.maxMembers) {
+            logger.warn(`User ${userId} attempted to join full study group ${groupId}`);
+            return sendError(res, "Study group is full", 400);
+        }
+
+        // Get user's name for activity message
+        const user = await UserQuiz.findById(userId).select("name");
+        const userName = user?.name || "Unknown User";
+
+        // Add member
+        studyGroup.members.push({
+            user: userId,
+            role: "member",
+            joinedAt: new Date()
+        });
+
+        // Add activity with user's name
+        studyGroup.activities.push({
+            type: "member_joined",
+            user: userId,
+            details: { message: `${userName} joined the group` },
+            timestamp: new Date()
+        });
+
+        await studyGroup.save();
+
+        // Add to user's study groups
+        await UserQuiz.findByIdAndUpdate(userId, {
+            $push: { "social.studyGroups": groupId }
+        });
+
+        logger.info(`User ${userId} successfully joined study group ${groupId}`);
+        return sendSuccess(res, await studyGroup.populate("members.user", "name email level"), "Successfully joined study group");
+
+    } catch (error) {
+        logger.error({ message: `Error joining study group ${req.params.groupId} for user ${req.user.id}`, error: error.message, stack: error.stack });
+        throw new AppError("Server error", 500);
+    }
+};
+
+// Leave study group
+export const leaveStudyGroup = async (req, res) => {
+    logger.info(`User ${req.user.id} attempting to leave study group ${req.params.groupId}`);
+    try {
+        const { groupId } = req.params;
+        const userId = req.user.id;
+
+        const studyGroup = await StudyGroup.findById(groupId);
+        if (!studyGroup) {
+            logger.warn(`Study group not found: ${groupId} when user ${userId} attempted to leave`);
+            return sendNotFound(res, "Study group");
+        }
+
+        // Check if user is a member
+        const memberIndex = studyGroup.members.findIndex(member =>
+            member.user.toString() === userId
+        );
+
+        if (memberIndex === -1) {
+            logger.warn(`User ${userId} attempted to leave study group ${groupId} they are not in`);
+            return sendError(res, "You are not a member of this group", 400);
+        }
+
+        const member = studyGroup.members[memberIndex];
+
+        // If user is the creator and there are other members, transfer ownership
+        if (member.role === "admin" && studyGroup.members.length > 1) {
+            // Find the oldest member to make new admin
+            const oldestMember = studyGroup.members
+                .filter(m => m.user.toString() !== userId)
+                .sort((a, b) => new Date(a.joinedAt) - new Date(b.joinedAt))[0];
+
+            if (oldestMember) {
+                oldestMember.role = "admin";
+                logger.info(`Transferred admin role of study group ${groupId} to user ${oldestMember.user}`);
+            }
+        }
+
+        // Get user's name for activity message
+        const user = await UserQuiz.findById(userId).select("name");
+        const userName = user?.name || "Unknown User";
+
+        // Remove member
+        studyGroup.members.splice(memberIndex, 1);
+
+        // If no members left, deactivate group
+        if (studyGroup.members.length === 0) {
+            studyGroup.isActive = false;
+            logger.info(`Deactivated study group ${groupId} as it has no members left`);
+        }
+
+        // Add activity with user's name
+        studyGroup.activities.push({
+            type: "member_left",
+            user: userId,
+            details: { message: `${userName} left the group` },
+            timestamp: new Date()
+        });
+
+        await studyGroup.save();
+
+        // Remove from user's study groups
+        await UserQuiz.findByIdAndUpdate(userId, {
+            $pull: { "social.studyGroups": groupId }
+        });
+
+        logger.info(`User ${userId} successfully left study group ${groupId}`);
+        return sendSuccess(res, null, "Successfully left study group");
+
+    } catch (error) {
+        logger.error({ message: `Error leaving study group ${req.params.groupId} for user ${req.user.id}`, error: error.message, stack: error.stack });
+        throw new AppError("Server error", 500);
+    }
+};
+
+// Get user's study groups
+export const getUserStudyGroups = async (req, res) => {
+    logger.info(`Getting study groups for user ${req.user.id}`);
+    try {
+        const userId = req.user.id;
+
+        const studyGroups = await StudyGroup.find({
+            "members.user": userId,
+            isActive: true
+        })
+        .populate("creator", "name email level")
+        .populate("members.user", "name email level isOnline")
+        .sort({ updatedAt: -1 });
+
+        logger.info(`Successfully fetched ${studyGroups.length} study groups for user ${userId}`);
+        return sendSuccess(res, { studyGroups }, "Study groups fetched successfully");
+
+    } catch (error) {
+        logger.error({ message: `Error getting study groups for user ${req.user.id}`, error: error.message, stack: error.stack });
+        throw new AppError("Server error", 500);
+    }
+};
+
+// Search public study groups
+export const searchStudyGroups = async (req, res) => {
+    logger.info(`User ${req.user.id} searching for study groups with query "${req.query.query}"`);
+    try {
+        const { query, category, page = 1, limit = 10 } = req.query;
+        const userId = req.user.id;
+
+        let searchCriteria = {
+            isPrivate: false,
+            isActive: true,
+            "members.user": { $ne: userId } // Exclude groups user is already in
+        };
+
+        if (query) {
+            // SECURITY: Escape special regex characters to prevent ReDoS attacks
+            const escapedQuery = query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            searchCriteria.$or = [
+                { name: { $regex: escapedQuery, $options: "i" } },
+                { description: { $regex: escapedQuery, $options: "i" } },
+                { tags: { $in: [new RegExp(escapedQuery, "i")] } }
+            ];
+        }
+
+        if (category) {
+            // SECURITY: Escape special regex characters to prevent ReDoS attacks
+            const escapedCategory = category.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            searchCriteria.category = { $regex: escapedCategory, $options: "i" };
+        }
+
+        const skip = (parseInt(page) - 1) * parseInt(limit);
+
+        const studyGroups = await StudyGroup.find(searchCriteria)
+            .populate("creator", "name email level")
+            .select("name description category tags members.length maxMembers createdAt")
+            .sort({ updatedAt: -1 })
+            .skip(skip)
+            .limit(parseInt(limit));
+
+        const total = await StudyGroup.countDocuments(searchCriteria);
+
+        logger.info(`Found ${studyGroups.length} study groups for query "${query}"`);
+        return sendSuccess(res, {
+            studyGroups: studyGroups.map(group => ({
+                ...group.toObject(),
+                memberCount: group.members.length
+            })),
+            pagination: {
+                currentPage: parseInt(page),
+                totalPages: Math.ceil(total / parseInt(limit)),
+                totalGroups: total,
+                hasNext: skip + parseInt(limit) < total
+            }
+        }, "Study groups searched successfully");
+
+    } catch (error) {
+        logger.error({ message: `Error searching study groups with query "${req.query.query}"`, error: error.message, stack: error.stack });
+        throw new AppError("Server error", 500);
+    }
+};
+
+// Get study group details
+export const getStudyGroupDetails = async (req, res) => {
+    logger.info(`Getting details for study group ${req.params.groupId} for user ${req.user.id}`);
+    try {
+        const { groupId } = req.params;
+        const userId = req.user.id;
+
+        const studyGroup = await StudyGroup.findById(groupId)
+            .populate("creator", "name email level")
+            .populate("members.user", "name email level xp isOnline lastSeen")
+            .populate("activities.user", "name");
+
+        if (!studyGroup) {
+            logger.warn(`Study group not found: ${groupId}`);
+            return sendNotFound(res, "Study group");
+        }
+
+        // Check if user can view this group
+        const isMember = studyGroup.members.some(member =>
+            member.user._id.toString() === userId
+        );
+
+        if (studyGroup.isPrivate && !isMember) {
+            logger.warn(`User ${userId} attempted to view private study group ${groupId}`);
+            return sendForbidden(res, "This is a private study group");
+        }
+
+        // Get recent activities (limit to last 50)
+        const recentActivities = studyGroup.activities
+            .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))
+            .slice(0, 50);
+
+        logger.info(`Successfully fetched details for study group ${groupId}`);
+        return sendSuccess(res, {
+            studyGroup: {
+                ...studyGroup.toObject(),
+                activities: recentActivities,
+                userRole: isMember ? studyGroup.members.find(m =>
+                    m.user._id.toString() === userId
+                )?.role : null
+            }
+        }, "Study group details fetched successfully");
+
+    } catch (error) {
+        logger.error({ message: `Error getting study group details for group ${req.params.groupId}`, error: error.message, stack: error.stack });
+        throw new AppError("Server error", 500);
+    }
+};
+
+// Share quiz with study group
+export const shareQuizWithGroup = async (req, res) => {
+    logger.info(`User ${req.user.id} sharing quiz ${req.body.quizId} with group ${req.params.groupId}`);
+    try {
+        const { groupId } = req.params;
+        const { quizId, message } = req.body;
+        const userId = req.user.id;
+
+        const studyGroup = await StudyGroup.findById(groupId);
+        if (!studyGroup) {
+            logger.warn(`Study group not found: ${groupId} when sharing quiz`);
+            return sendNotFound(res, "Study group");
+        }
+
+        // Check if user is a member
+        const isMember = studyGroup.members.some(member =>
+            member.user.toString() === userId
+        );
+
+        if (!isMember) {
+            logger.warn(`User ${userId} attempted to share quiz with group ${groupId} they are not in`);
+            return sendForbidden(res, "You must be a member to share quizzes");
+        }
+
+        // Verify quiz exists
+        const quiz = await Quiz.findById(quizId);
+        if (!quiz) {
+            logger.warn(`Quiz not found: ${quizId} when sharing with group`);
+            return sendNotFound(res, "Quiz");
+        }
+
+        // Add activity
+        studyGroup.activities.push({
+            type: "quiz_shared",
+            user: userId,
+            details: {
+                quizId: quizId,
+                quizTitle: quiz.title,
+                message: message || `Shared "${quiz.title}" quiz`
+            },
+            timestamp: new Date()
+        });
+
+        // Update stats
+        studyGroup.stats.totalQuizzes += 1;
+        await studyGroup.save();
+
+        // Update user stats
+        await UserQuiz.findByIdAndUpdate(userId, {
+            $inc: { "social.socialStats.quizzesShared": 1 }
+        });
+
+        logger.info(`User ${userId} successfully shared quiz ${quizId} with group ${groupId}`);
+        return sendSuccess(res, {
+            activity: studyGroup.activities[studyGroup.activities.length - 1]
+        }, "Quiz shared successfully");
+
+    } catch (error) {
+        logger.error({ message: `Error sharing quiz ${req.body.quizId} with group ${req.params.groupId}`, error: error.message, stack: error.stack });
+        throw new AppError("Server error", 500);
+    }
+};
+
+// Update study group settings (admin only)
+export const updateStudyGroup = async (req, res) => {
+    logger.info(`User ${req.user.id} attempting to update study group ${req.params.groupId}`);
+    try {
+        const { groupId } = req.params;
+        const { name, description, maxMembers, category, tags } = req.body;
+        const userId = req.user.id;
+
+        const studyGroup = await StudyGroup.findById(groupId);
+        if (!studyGroup) {
+            logger.warn(`Study group not found: ${groupId} when updating`);
+            return sendNotFound(res, "Study group");
+        }
+
+        // Check if user is admin
+        const member = studyGroup.members.find(member =>
+            member.user.toString() === userId
+        );
+
+        if (!member || member.role !== "admin") {
+            logger.warn(`User ${userId} attempted to update study group ${groupId} without admin privileges`);
+            return sendForbidden(res, "Only admins can update group settings");
+        }
+
+        // Update fields
+        if (name && name.trim().length >= 3) {
+            studyGroup.name = name.trim();
+        }
+        if (description !== undefined) {
+            studyGroup.description = description.trim();
+        }
+        if (maxMembers && maxMembers >= studyGroup.members.length && maxMembers <= 100) {
+            studyGroup.maxMembers = maxMembers;
+        }
+        if (category !== undefined) {
+            studyGroup.category = category.trim();
+        }
+        if (tags && Array.isArray(tags)) {
+            studyGroup.tags = tags;
+        }
+
+        await studyGroup.save();
+
+        logger.info(`Study group ${groupId} updated successfully by user ${userId}`);
+        return sendSuccess(res, await studyGroup.populate("members.user", "name email level"), "Study group updated successfully");
+
+    } catch (error) {
+        logger.error({ message: `Error updating study group ${req.params.groupId} by user ${req.user.id}`, error: error.message, stack: error.stack });
+        throw new AppError("Server error", 500);
+    }
+};

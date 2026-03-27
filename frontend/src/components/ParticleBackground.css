@@ -1,0 +1,328 @@
+/* ParticleBackground.css - Simplified Theme-Responsive Dynamic Particles */
+.particle-background {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  pointer-events: none;
+  z-index: -1;
+  overflow: hidden;
+  transition: all var(--transition-slow);
+}
+
+/* Base particle styles - colors now handled by inline styles */
+.particle {
+  position: absolute;
+  border-radius: 50%;
+  transition: all var(--transition-slow);
+  filter: blur(1px);
+}
+
+/* Theme-specific opacity controls */
+:root[data-theme="Light"] .particle-background {
+  opacity: 0.4;
+}
+
+:root[data-theme="Dark"] .particle-background,
+:root .particle-background {
+  opacity: 0.6;
+}
+
+:root[data-theme="Ocean"] .particle-background {
+  opacity: 0.8;
+}
+
+:root[data-theme="Forest"] .particle-background {
+  opacity: 0.7;
+}
+
+:root[data-theme="Sunset"] .particle-background {
+  opacity: 0.6;
+}
+
+:root[data-theme="Lavender"] .particle-background {
+  opacity: 0.5;
+}
+
+:root[data-theme="synthwave"] .particle-background {
+  opacity: 1;
+}
+
+:root[data-theme="tokyo-night"] .particle-background {
+  opacity: 0.7;
+}
+
+:root[data-theme="gruvbox-dark"] .particle-background {
+  opacity: 0.6;
+}
+
+:root[data-theme="material-dark"] .particle-background {
+  opacity: 0.6;
+}
+
+:root[data-theme="nord"] .particle-background {
+  opacity: 0.5;
+}
+
+/* Special synthwave glow effect */
+:root[data-theme="synthwave"] .particle {
+  filter: blur(0.5px);
+}
+
+@keyframes synthwave-glow {
+  0% {
+    opacity: 0.6;
+    transform: scale(1);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1.2);
+  }
+}
+
+/* Ocean Theme - Aquatic Blues and Golds */
+:root[data-theme="Ocean"] .particle-background {
+  opacity: 0.6;
+}
+
+:root[data-theme="Ocean"] .particle {
+  background: var(--warning);
+  box-shadow: 0 0 8px var(--warning-light);
+  opacity: 0.8;
+}
+
+:root[data-theme="Ocean"] .particle:nth-child(2n) {
+  background: var(--info);
+  box-shadow: 0 0 10px var(--info-light);
+  opacity: 0.7;
+}
+
+:root[data-theme="Ocean"] .particle:nth-child(3n) {
+  background: var(--info);
+  box-shadow: 0 0 6px var(--info-light);
+  opacity: 0.6;
+}
+
+:root[data-theme="Ocean"] .particle:nth-child(5n) {
+  background: var(--warning);
+  box-shadow: 0 0 12px var(--warning-light);
+  opacity: 0.9;
+}
+
+/* Forest Theme - Natural Greens */
+:root[data-theme="Forest"] .particle-background {
+  opacity: 0.5;
+}
+
+:root[data-theme="Forest"] .particle {
+  background: var(--success);
+  box-shadow: 0 0 8px var(--success-light);
+  opacity: 0.7;
+}
+
+:root[data-theme="Forest"] .particle:nth-child(2n) {
+  background: var(--success);
+  box-shadow: 0 0 6px var(--success-light);
+  opacity: 0.6;
+}
+
+:root[data-theme="Forest"] .particle:nth-child(3n) {
+  background: var(--success);
+  box-shadow: 0 0 5px var(--success-light);
+  opacity: 0.5;
+}
+
+:root[data-theme="Forest"] .particle:nth-child(5n) {
+  background: var(--warning);
+  box-shadow: 0 0 10px var(--warning-light);
+  opacity: 0.8;
+}
+
+/* Sunset Theme - Warm Oranges and Yellows */
+:root[data-theme="Sunset"] .particle-background {
+  opacity: 0.4;
+}
+
+:root[data-theme="Sunset"] .particle {
+  background: var(--warning);
+  box-shadow: 0 0 8px var(--warning-light);
+  opacity: 0.6;
+}
+
+:root[data-theme="Sunset"] .particle:nth-child(2n) {
+  background: var(--warning);
+  box-shadow: 0 0 6px var(--warning-light);
+  opacity: 0.5;
+}
+
+:root[data-theme="Sunset"] .particle:nth-child(3n) {
+  background: var(--warning);
+  box-shadow: 0 0 5px var(--warning-light);
+  opacity: 0.4;
+}
+
+/* Lavender Theme - Elegant Purples */
+:root[data-theme="Lavender"] .particle-background {
+  opacity: 0.35;
+}
+
+:root[data-theme="Lavender"] .particle {
+  background: var(--accent2);
+  box-shadow: 0 0 8px var(--accent-light);
+  opacity: 0.5;
+}
+
+:root[data-theme="Lavender"] .particle:nth-child(2n) {
+  background: var(--accent2);
+  box-shadow: 0 0 6px var(--accent-light);
+  opacity: 0.4;
+}
+
+:root[data-theme="Lavender"] .particle:nth-child(3n) {
+  background: var(--accent2);
+  box-shadow: 0 0 5px var(--accent-light);
+  opacity: 0.3;
+}
+
+/* Synthwave Theme - Neon Cyberpunk */
+:root[data-theme="synthwave"] .particle-background {
+  opacity: 0.8;
+}
+
+:root[data-theme="synthwave"] .particle {
+  background: var(--info);
+  box-shadow: 0 0 15px var(--info-light);
+  opacity: 1;
+  filter: blur(0.5px);
+  animation: synthwave-glow 3s ease-in-out infinite alternate;
+}
+
+:root[data-theme="synthwave"] .particle:nth-child(2n) {
+  background: var(--accent);
+  box-shadow: 0 0 20px var(--accent-light);
+  opacity: 0.9;
+  animation: synthwave-glow 2.5s ease-in-out infinite alternate-reverse;
+}
+
+:root[data-theme="synthwave"] .particle:nth-child(3n) {
+  background: var(--accent2);
+  box-shadow: 0 0 12px var(--accent-light);
+  opacity: 0.8;
+}
+
+:root[data-theme="synthwave"] .particle:nth-child(5n) {
+  background: var(--success);
+  box-shadow: 0 0 18px var(--success-light);
+  opacity: 0.85;
+  animation: synthwave-glow 4s ease-in-out infinite alternate;
+}
+
+@keyframes synthwave-glow {
+  0% {
+    opacity: 0.6;
+    transform: scale(1);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1.2);
+  }
+}
+
+/* Tokyo Night Theme - Authentic Colors */
+:root[data-theme="tokyo-night"] .particle-background {
+  opacity: 0.5;
+}
+
+:root[data-theme="tokyo-night"] .particle {
+  background: var(--info);
+  box-shadow: 0 0 8px var(--info-light);
+  opacity: 0.7;
+}
+
+:root[data-theme="tokyo-night"] .particle:nth-child(2n) {
+  background: var(--accent2);
+  box-shadow: 0 0 6px var(--accent-light);
+  opacity: 0.6;
+}
+
+:root[data-theme="tokyo-night"] .particle:nth-child(3n) {
+  background: var(--success);
+  box-shadow: 0 0 5px var(--success-light);
+  opacity: 0.5;
+}
+
+:root[data-theme="tokyo-night"] .particle:nth-child(5n) {
+  background: var(--warning);
+  box-shadow: 0 0 10px var(--warning-light);
+  opacity: 0.8;
+}
+
+/* Gruvbox Dark Theme - Warm Retro Colors */
+:root[data-theme="gruvbox-dark"] .particle-background {
+  opacity: 0.45;
+}
+
+:root[data-theme="gruvbox-dark"] .particle {
+  background: var(--warning);
+  box-shadow: 0 0 8px var(--warning-light);
+  opacity: 0.7;
+}
+
+:root[data-theme="gruvbox-dark"] .particle:nth-child(2n) {
+  background: var(--warning);
+  box-shadow: 0 0 6px var(--warning-light);
+  opacity: 0.6;
+}
+
+:root[data-theme="gruvbox-dark"] .particle:nth-child(3n) {
+  background: var(--info);
+  box-shadow: 0 0 5px var(--info-light);
+  opacity: 0.5;
+}
+
+/* Material Dark Theme - Modern Purples */
+:root[data-theme="material-dark"] .particle-background {
+  opacity: 0.4;
+}
+
+:root[data-theme="material-dark"] .particle {
+  background: var(--accent2);
+  box-shadow: 0 0 8px var(--accent-light);
+  opacity: 0.6;
+}
+
+:root[data-theme="material-dark"] .particle:nth-child(2n) {
+  background: var(--info);
+  box-shadow: 0 0 6px var(--info-light);
+  opacity: 0.5;
+}
+
+/* Nord Theme - Cool Arctic Colors */
+:root[data-theme="nord"] .particle-background {
+  opacity: 0.4;
+}
+
+:root[data-theme="nord"] .particle {
+  background: var(--info);
+  box-shadow: 0 0 8px var(--info-light);
+  opacity: 0.6;
+}
+
+:root[data-theme="nord"] .particle:nth-child(2n) {
+  background: var(--info);
+  box-shadow: 0 0 6px var(--info-light);
+  opacity: 0.5;
+}
+
+:root[data-theme="nord"] .particle:nth-child(3n) {
+  background: var(--success);
+  box-shadow: 0 0 5px var(--success-light);
+  opacity: 0.4;
+}
+
+:root[data-theme="nord"] .particle:nth-child(5n) {
+  background: var(--warning);
+  box-shadow: 0 0 10px var(--warning-light);
+  opacity: 0.7;
+}
