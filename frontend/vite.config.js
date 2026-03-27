@@ -25,6 +25,23 @@ export default defineConfig({
     // Development server config
     host: true,
     port: 5173,
+    // Allow all hosts in production
+    allowedHosts: [
+      'localhost',
+      '127.0.0.1',
+      '.onrender.com', // Allow all render.com subdomains
+      'https://quiznest-full-stack-ai-powered-quiz.onrender.com'
+    ]
+  },
+  preview: {
+    // Preview server config for production
+    host: true,
+    port: 5173,
+    allowedHosts: [
+      'localhost',
+      '.onrender.com',
+      'https://quiznest-full-stack-ai-powered-quiz.onrender.com'
+    ]
   },
   // PWA-specific optimizations
   define: {
