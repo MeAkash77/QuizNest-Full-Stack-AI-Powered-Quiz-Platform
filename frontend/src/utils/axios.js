@@ -2,7 +2,7 @@ import axios from "axios";
 
 // ✅ Use environment variables with fallback
 const API_URL = import.meta.env.VITE_API_URL || import.meta.env.VITE_BACKEND_URL || "https://quiznest-full-stack-ai-powered-quiz.onrender.com";
-const API_TIMEOUT = 30000; // 30 seconds
+const API_TIMEOUT = 60000; // Increased to 60 seconds
 
 const instance = axios.create({
     baseURL: API_URL,
@@ -83,6 +83,13 @@ instance.interceptors.response.use(
 
         const status = error.response?.status;
 
+        // Handle timeout errors specifically
+        if (error.code === 'ECONNABORTED' && error.message.includes('timeout')) {
+            console.warn('⏱️ Request timeout:', error.config?.url);
+            // Don't show notification for timeout errors - they're handled by the component
+            return Promise.reject(error);
+        }
+
         // Handle rate limiting specifically
         if (status === 429) {
             console.error('❌ Rate Limited:', error.message);
@@ -122,33 +129,35 @@ instance.interceptors.response.use(
             console.error('❌ Network Error:', error.message);
             console.error('❌ API URL being used:', API_URL);
             
-            // Show user-friendly connection error message
-            const notification = document.createElement('div');
-            notification.style.cssText = `
-                position: fixed;
-                top: 20px;
-                right: 20px;
-                background: rgba(255, 165, 0, 0.95);
-                backdrop-filter: blur(10px);
-                color: white;
-                padding: 16px 24px;
-                border-radius: 12px;
-                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-                font-weight: 500;
-                box-shadow: 0 8px 32px rgba(255, 165, 0, 0.3);
-                z-index: 10000;
-                animation: slideIn 0.3s ease-out;
-                max-width: 300px;
-            `;
-            notification.innerHTML = '⚠️ Connection issue. Please refresh the page.';
+            // Only show notification for network errors (not timeouts)
+            if (error.code !== 'ECONNABORTED') {
+                const notification = document.createElement('div');
+                notification.style.cssText = `
+                    position: fixed;
+                    top: 20px;
+                    right: 20px;
+                    background: rgba(255, 165, 0, 0.95);
+                    backdrop-filter: blur(10px);
+                    color: white;
+                    padding: 16px 24px;
+                    border-radius: 12px;
+                    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+                    font-weight: 500;
+                    box-shadow: 0 8px 32px rgba(255, 165, 0, 0.3);
+                    z-index: 10000;
+                    animation: slideIn 0.3s ease-out;
+                    max-width: 300px;
+                `;
+                notification.innerHTML = '⚠️ Connection issue. Please refresh the page.';
 
-            document.body.appendChild(notification);
+                document.body.appendChild(notification);
 
-            setTimeout(() => {
-                if (notification.parentNode) {
-                    notification.remove();
-                }
-            }, 5000);
+                setTimeout(() => {
+                    if (notification.parentNode) {
+                        notification.remove();
+                    }
+                }, 5000);
+            }
         }
 
         if (status === 403) {
