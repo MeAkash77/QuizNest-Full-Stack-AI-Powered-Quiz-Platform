@@ -1,3 +1,4 @@
+import AuthSuccess from "./pages/AuthSuccess";
 import React, { Suspense, lazy, useEffect } from "react";
 import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
 import AuthWrapper from "./components/AuthWrapper";
