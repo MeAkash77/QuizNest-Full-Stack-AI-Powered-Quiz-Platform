@@ -79,7 +79,7 @@ const getClientIP = (req) => {
     return 'unknown';
 };
 
-// Google OAuth Callback - FIXED VERSION
+// Google OAuth Callback - FIXED VERSION (redirects to /auth/success)
 router.get(
     "/google/callback",
     passport.authenticate("google", { session: false, failureRedirect: "/login" }),
@@ -111,82 +111,17 @@ router.get(
                         user.loginIPHistory = user.loginIPHistory.slice(-10);
                     }
                     await user.save();
+                    logger.info(`Saved IP address for Google OAuth login for user ${userId}`);
                 } else {
                     user.lastLoginIP = 'unknown';
                     await user.save();
                 }
             }
 
-            // Send HTML page that saves token and redirects
+            // ✅ Redirect to frontend auth success page
             const frontendURL = process.env.FRONTEND_URL || "http://localhost:5173";
-            const backendURL = process.env.BACKEND_URL || "https://quizzest-full-stack-ai-powered-quiz-jhtp.onrender.com";
+            res.redirect(`${frontendURL}/auth/success?token=${token}`);
             
-            const htmlResponse = `
-                <!DOCTYPE html>
-                <html>
-                <head>
-                    <title>Google Login - Complete</title>
-                    <style>
-                        body {
-                            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
-                            display: flex;
-                            justify-content: center;
-                            align-items: center;
-                            height: 100vh;
-                            margin: 0;
-                            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-                            color: white;
-                        }
-                        .container {
-                            text-align: center;
-                            padding: 2rem;
-                        }
-                        .spinner {
-                            width: 50px;
-                            height: 50px;
-                            border: 3px solid rgba(255,255,255,0.3);
-                            border-radius: 50%;
-                            border-top-color: white;
-                            animation: spin 1s ease-in-out infinite;
-                            margin: 20px auto;
-                        }
-                        @keyframes spin {
-                            to { transform: rotate(360deg); }
-                        }
-                    </style>
-                    <script>
-                        // Save token to localStorage
-                        localStorage.setItem('token', '${token}');
-                        
-                        // Fetch user data
-                        fetch('${backendURL}/api/users/me', {
-                            headers: {
-                                'Authorization': 'Bearer ${token}'
-                            }
-                        })
-                        .then(res => res.json())
-                        .then(user => {
-                            localStorage.setItem('user', JSON.stringify(user));
-                            // Redirect to home page
-                            window.location.href = '${frontendURL}/';
-                        })
-                        .catch(err => {
-                            console.error('Error fetching user:', err);
-                            window.location.href = '${frontendURL}/login?error=auth_failed';
-                        });
-                    </script>
-                </head>
-                <body>
-                    <div class="container">
-                        <div class="spinner"></div>
-                        <h2>Logging you in with Google...</h2>
-                        <p>Please wait while we redirect you to your dashboard.</p>
-                    </div>
-                </body>
-                </html>
-            `;
-            
-            res.send(htmlResponse);
         } catch (error) {
             logger.error({ message: "Error in Google OAuth callback", error: error.message, stack: error.stack });
             const frontendURL = process.env.FRONTEND_URL || "http://localhost:5173";
