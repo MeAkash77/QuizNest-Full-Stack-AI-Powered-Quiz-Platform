@@ -260,7 +260,7 @@ const TakeQuiz = () => {
             }
         } catch (error) {
             console.error("Error fetching quiz:", error);
-            if (error.code === 'ERR_NETWORK' || error.message.includes('Network Error')) {
+            if (error.code === 'NETWORK_ERROR' || error.message.includes('Network Error')) {
                 if (retryCount < 3) {
                     setError(`Network error. Retrying... (${retryCount + 1}/3)`);
                     setTimeout(() => fetchQuiz(true), 2000);
@@ -450,7 +450,7 @@ const TakeQuiz = () => {
                 : "low"
             );
 
-            // Save the report with error handling - DON'T await to prevent blocking
+            // Save the report with error handling - use Promise.allSettled to prevent blocking
             const user = JSON.parse(localStorage.getItem("user"));
             const totalTimeSpent = Object.values(answerTimes).reduce((sum, time) => sum + time, 0);
             
@@ -486,11 +486,42 @@ const TakeQuiz = () => {
                     return null;
                 })
             ]).then(() => {
-                // All operations completed (success or failure)
                 console.log("Auto-submit operations completed");
             });
 
+            // Non-critical operations - run in background
+            if (user?._id) {
+                Promise.allSettled([
+                    axios.post('/api/intelligence/preferences', {
+                        quizId: id,
+                        score: scoreAchieved,
+                        totalQuestions: quiz.questions.length,
+                        timeSpent: totalTimeSpent,
+                        category: quiz.category || 'General',
+                        difficulty: quiz.questions.length > 10 ? 'hard' :
+                                   quiz.questions.length > 5 ? 'medium' : 'easy'
+                    }).catch(err => console.warn("Preferences update failed:", err.message)),
+                    
+                    axios.post('/api/intelligence/track-performance', {
+                        quizId: id,
+                        score: scoreAchieved,
+                        totalQuestions: quiz.questions.length,
+                        timeSpent: totalTimeSpent,
+                    }).catch(err => console.warn("Performance tracking failed:", err.message))
+                ]);
+            }
+
+            // Refresh user data with error handling
+            try {
+                const updatedUserRes = await axios.get('/api/users/me');
+                localStorage.setItem("user", JSON.stringify(updatedUserRes.data));
+            } catch (userError) {
+                console.warn("Could not refresh user data:", userError.message);
+            }
+
             setReviewQuestions(detailedQuestions);
+
+            // Mark quiz as completed and show result modal
             setIsQuizCompleted(true);
             setShowResultModal(true);
 
@@ -519,6 +550,8 @@ const TakeQuiz = () => {
                 localStorage.setItem('pendingQuizSubmissions', JSON.stringify(existingData));
 
                 setReviewQuestions(detailedQuestions);
+
+                // Mark quiz as completed and show result modal even if backend failed
                 setIsQuizCompleted(true);
                 setShowResultModal(true);
 
@@ -534,6 +567,8 @@ const TakeQuiz = () => {
     // Auto-submit event listeners
     useEffect(() => {
         if (!quiz || hasAutoSubmitted) return;
+
+        // Escape key handler is now handled in the main fullscreen useEffect
 
         // Page unload handler (browser close, refresh, navigation)
         const handleBeforeUnload = (_event) => {
@@ -720,7 +755,7 @@ const TakeQuiz = () => {
                 showSuccess("Quiz submitted successfully!");
             }
 
-            // Try to update user preferences and performance tracking (non-critical)
+            // Non-critical operations - run in background
             if (user?._id) {
                 Promise.allSettled([
                     axios.post('/api/intelligence/preferences', {
