@@ -9,8 +9,7 @@ const AuthSuccess = () => {
 
   useEffect(() => {
     const token = searchParams.get("token");
-    console.log("🔐 AuthSuccess page loaded");
-    console.log("Token present:", token ? "✅ Yes" : "❌ No");
+    console.log("🔐 AuthSuccess: Token received:", token ? "✅ Yes" : "❌ No");
     
     if (!token) {
       setError("No authentication token received");
@@ -33,14 +32,13 @@ const AuthSuccess = () => {
       },
     })
       .then((res) => {
-        console.log("📡 User fetch response status:", res.status);
         if (!res.ok) {
           throw new Error(`HTTP ${res.status}: ${res.statusText}`);
         }
         return res.json();
       })
       .then((user) => {
-        console.log("👤 User data received:", user.email);
+        console.log("👤 User logged in:", user.email);
         localStorage.setItem("user", JSON.stringify(user));
         setLoading(false);
         
