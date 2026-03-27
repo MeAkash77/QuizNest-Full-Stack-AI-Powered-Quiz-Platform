@@ -211,14 +211,14 @@ router.get(
             // 🔒 SECURITY: Store user data in session instead of URL
             // Only pass the token through URL, user data retrieved via API call
             const frontendURL = process.env.FRONTEND_URL || "http://localhost:5173";
-            // FIXED: Redirect to /google-auth to match frontend route
-            res.redirect(`${frontendURL}/google-auth?token=${token}`);
+            // Redirect to /auth/success (should already exist in your frontend)
+            res.redirect(`${frontendURL}/auth/success?token=${token}`);
         } catch (error) {
             logger.error({ message: "Error saving IP address for Google OAuth login", error: error.message, stack: error.stack });
             // Still redirect even if IP save fails
             const frontendURL = process.env.FRONTEND_URL || "http://localhost:5173";
-            // FIXED: Redirect to /google-auth to match frontend route
-            res.redirect(`${frontendURL}/google-auth?token=${req.user?.token || ''}`);
+            // Redirect to /auth/success (should already exist in your frontend)
+            res.redirect(`${frontendURL}/auth/success?token=${req.user?.token || ''}`);
         }
     }
 );
