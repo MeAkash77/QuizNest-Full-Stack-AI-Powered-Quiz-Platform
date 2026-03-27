@@ -260,7 +260,7 @@ const TakeQuiz = () => {
             }
         } catch (error) {
             console.error("Error fetching quiz:", error);
-            if (error.code === 'NETWORK_ERROR' || error.message.includes('Network Error')) {
+            if (error.code === 'ERR_NETWORK' || error.message.includes('Network Error')) {
                 if (retryCount < 3) {
                     setError(`Network error. Retrying... (${retryCount + 1}/3)`);
                     setTimeout(() => fetchQuiz(true), 2000);
@@ -450,10 +450,13 @@ const TakeQuiz = () => {
                 : "low"
             );
 
-            // Save the report with error handling
-            try {
-                const user = JSON.parse(localStorage.getItem("user"));
-                await axios.post(`/api/reports`, {
+            // Save the report with error handling - DON'T await to prevent blocking
+            const user = JSON.parse(localStorage.getItem("user"));
+            const totalTimeSpent = Object.values(answerTimes).reduce((sum, time) => sum + time, 0);
+            
+            // Use Promise.allSettled to handle multiple async operations without blocking
+            Promise.allSettled([
+                axios.post(`/api/reports`, {
                     username: user?.name,
                     quizName: quiz.title,
                     score: scoreAchieved,
@@ -461,84 +464,35 @@ const TakeQuiz = () => {
                     questions: detailedQuestions,
                     autoSubmitted: true,
                     reason: reason
-                });
-            } catch (reportError) {
-                console.warn("Could not save report:", reportError.message);
-            }
-
-            // Update quiz statistics with error handling
-            try {
-                const totalTimeSpent = Object.values(answerTimes).reduce((sum, time) => sum + time, 0);
-                await axios.post(`/api/quizzes/${id}/stats`, {
+                }).catch(err => {
+                    console.warn("Report save failed:", err.message);
+                    return null;
+                }),
+                
+                axios.post(`/api/quizzes/${id}/stats`, {
                     quizId: id,
                     score: scoreAchieved,
                     totalQuestions: quiz.questions.length,
                     timeSpent: totalTimeSpent
-                });
-
-                // Update daily activity for streak tracking
-                try {
-                    // Ensure we have at least 1 second to avoid 0 time
-                    const timeToSend = Math.max(1, totalTimeSpent || 1);
-                    const response = await axios.post('/api/users/streak/activity', {
-                        timeSpentSeconds: timeToSend
-                    });
-                    console.log('Daily activity updated (auto-submit):', response.data);
-                } catch (streakError) {
-                    console.error("Could not update daily activity (auto-submit):", streakError.response?.data || streakError.message);
-                }
-            } catch (statsError) {
-                console.warn("Could not update quiz stats:", statsError.message);
-            }
-
-            // Update user preferences and performance tracking with error handling
-            try {
-                const user = JSON.parse(localStorage.getItem("user"));
-                if (user?._id) {
-                    const totalTimeSpent = Object.values(answerTimes).reduce((sum, time) => sum + time, 0);
-                    try {
-                        await axios.post('/api/intelligence/preferences', {
-                            quizId: id,
-                            score: scoreAchieved,
-                            totalQuestions: quiz.questions.length,
-                            timeSpent: totalTimeSpent,
-                            category: quiz.category || 'General',
-                            difficulty: quiz.questions.length > 10 ? 'hard' :
-                                       quiz.questions.length > 5 ? 'medium' : 'easy'
-                        });
-                    } catch (prefError) {
-                        console.warn("Could not update user preferences:", prefError.response?.data?.error || prefError.message);
-                    }
-
-                    try {
-                        await axios.post('/api/intelligence/track-performance', {
-                            quizId: id,
-                            score: scoreAchieved,
-                            totalQuestions: quiz.questions.length,
-                            timeSpent: totalTimeSpent,
-                        });
-                    } catch (perfError) {
-                        console.warn("Could not track performance:", perfError.response?.data?.error || perfError.message);
-                    }
-                }
-            } catch (preferencesError) {
-                console.warn("Could not update user preferences:", preferencesError.message);
-            }
-
-            // Refresh user data with error handling
-            try {
-                const updatedUserRes = await axios.get('/api/users/me');
-                localStorage.setItem("user", JSON.stringify(updatedUserRes.data));
-            } catch (userError) {
-                console.warn("Could not refresh user data:", userError.message);
-            }
+                }).catch(err => {
+                    console.warn("Quiz stats update failed:", err.message);
+                    return null;
+                }),
+                
+                axios.post('/api/users/streak/activity', {
+                    timeSpentSeconds: Math.max(1, totalTimeSpent || 1)
+                }).catch(err => {
+                    console.warn("Streak update failed:", err.message);
+                    return null;
+                })
+            ]).then(() => {
+                // All operations completed (success or failure)
+                console.log("Auto-submit operations completed");
+            });
 
             setReviewQuestions(detailedQuestions);
-
-            // Mark quiz as completed and show result modal
             setIsQuizCompleted(true);
             setShowResultModal(true);
-
 
         } catch (error) {
             console.error("Error auto-submitting quiz:", error);
@@ -564,10 +518,7 @@ const TakeQuiz = () => {
                 existingData.push(localQuizData);
                 localStorage.setItem('pendingQuizSubmissions', JSON.stringify(existingData));
 
-
                 setReviewQuestions(detailedQuestions);
-
-                // Mark quiz as completed and show result modal even if backend failed
                 setIsQuizCompleted(true);
                 setShowResultModal(true);
 
@@ -583,8 +534,6 @@ const TakeQuiz = () => {
     // Auto-submit event listeners
     useEffect(() => {
         if (!quiz || hasAutoSubmitted) return;
-
-        // Escape key handler is now handled in the main fullscreen useEffect
 
         // Page unload handler (browser close, refresh, navigation)
         const handleBeforeUnload = (_event) => {
@@ -700,6 +649,7 @@ const TakeQuiz = () => {
         }
 
         isSubmittingRef.current = true;
+        setIsSubmitting(true);
         recordAnswerTime();
         let correctCount = 0;
 
@@ -737,41 +687,43 @@ const TakeQuiz = () => {
 
         try {
             const user = JSON.parse(localStorage.getItem("user"));
-
-            // Save the report as before
-            await axios.post(`/api/reports`, {
-                username: user?.name,
-                quizName: quiz.title,
-                score: scoreAchieved,
-                total: totalMarks,
-                questions: detailedQuestions,
-            });
-
-            // Phase 2: Update quiz statistics
             const totalTimeSpent = Object.values(answerTimes).reduce((sum, time) => sum + time, 0);
-            await axios.post(`/api/quizzes/${id}/stats`, {
-                quizId: id,
-                score: scoreAchieved,
-                totalQuestions: quiz.questions.length,
-                timeSpent: totalTimeSpent
-            });
 
-            // Update daily activity for streak tracking
-            try {
-                // Ensure we have at least 1 second to avoid 0 time
-                const timeToSend = Math.max(1, totalTimeSpent || 1);
-                const response = await axios.post('/api/users/streak/activity', {
-                    timeSpentSeconds: timeToSend
-                });
-                console.log('Daily activity updated:', response.data);
-            } catch (streakError) {
-                console.error("Could not update daily activity:", streakError.response?.data || streakError.message);
+            // Use Promise.allSettled to handle multiple async operations without blocking
+            const results = await Promise.allSettled([
+                axios.post(`/api/reports`, {
+                    username: user?.name,
+                    quizName: quiz.title,
+                    score: scoreAchieved,
+                    total: totalMarks,
+                    questions: detailedQuestions,
+                }),
+                
+                axios.post(`/api/quizzes/${id}/stats`, {
+                    quizId: id,
+                    score: scoreAchieved,
+                    totalQuestions: quiz.questions.length,
+                    timeSpent: totalTimeSpent
+                }),
+                
+                axios.post('/api/users/streak/activity', {
+                    timeSpentSeconds: Math.max(1, totalTimeSpent || 1)
+                })
+            ]);
+
+            // Check if any operations failed
+            const failedOps = results.filter(r => r.status === 'rejected');
+            if (failedOps.length > 0) {
+                console.warn(`${failedOps.length} operations failed:`, failedOps);
+                showError("Some data couldn't be saved, but your quiz results are saved locally.");
+            } else {
+                showSuccess("Quiz submitted successfully!");
             }
 
-            // Phase 2: Update user preferences and performance tracking
+            // Try to update user preferences and performance tracking (non-critical)
             if (user?._id) {
-                try {
-                    await axios.post('/api/intelligence/preferences', {
+                Promise.allSettled([
+                    axios.post('/api/intelligence/preferences', {
                         quizId: id,
                         score: scoreAchieved,
                         totalQuestions: quiz.questions.length,
@@ -779,29 +731,18 @@ const TakeQuiz = () => {
                         category: quiz.category || 'General',
                         difficulty: quiz.questions.length > 10 ? 'hard' :
                                    quiz.questions.length > 5 ? 'medium' : 'easy'
-                    });
-                } catch (prefError) {
-                    console.warn("Could not update user preferences:", prefError.response?.data?.error || prefError.message);
-                }
-
-                try {
-                    await axios.post('/api/intelligence/track-performance', {
+                    }).catch(err => console.warn("Preferences update failed:", err.message)),
+                    
+                    axios.post('/api/intelligence/track-performance', {
                         quizId: id,
                         score: scoreAchieved,
                         totalQuestions: quiz.questions.length,
                         timeSpent: totalTimeSpent,
-                    });
-                } catch (perfError) {
-                    console.warn("Could not track performance:", perfError.response?.data?.error || perfError.message);
-                    // Show a user-friendly warning if it's a validation error
-                    if (perfError.response?.status === 400) {
-                        const errorMsg = perfError.response?.data?.error || "Invalid data provided";
-                        showError(`Unable to track your performance: ${errorMsg}. Your quiz results have been saved successfully.`);
-                    }
-                }
+                    }).catch(err => console.warn("Performance tracking failed:", err.message))
+                ]);
             }
 
-            // ✅ Refresh user data to get updated XP and level
+            // Refresh user data to get updated XP and level
             try {
                 const updatedUserRes = await axios.get('/api/users/me');
                 localStorage.setItem("user", JSON.stringify(updatedUserRes.data));
@@ -819,12 +760,11 @@ const TakeQuiz = () => {
         } catch (error) {
             console.error("Error saving report:", error);
             showError("Failed to save your score. Please try again.");
-            setIsSubmitting(false);
         } finally {
             isSubmittingRef.current = false;
             setIsSubmitting(false);
         }
-    }, [quiz, answers, answerTimes, optionLetters, showError, id, recordAnswerTime, hasAutoSubmitted, exitFullScreen, isSubmitting]);
+    }, [quiz, answers, answerTimes, optionLetters, showError, showSuccess, id, recordAnswerTime, hasAutoSubmitted, exitFullScreen, isSubmitting]);
 
     useEffect(() => {
         if (timeLeft === null) return;
