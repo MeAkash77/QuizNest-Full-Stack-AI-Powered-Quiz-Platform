@@ -349,6 +349,41 @@ const startServer = async () => {
             res.status(200).send("Server is awake");
         });
 
+        // Health check route
+        app.get("/health", (req, res) => {
+            res.status(200).json({
+                status: "healthy",
+                mongodb: mongoose.connection.readyState === 1 ? "connected" : "disconnected",
+                timestamp: new Date().toISOString(),
+                uptime: process.uptime(),
+                environment: process.env.NODE_ENV || "development",
+                redis: redisClient?.isOpen ? "connected" : "disconnected"
+            });
+        });
+
+        // Root route
+        app.get("/", (req, res) => {
+            res.status(200).json({
+                message: "Quiz App API",
+                version: "1.0.0",
+                status: "running",
+                endpoints: {
+                    ping: "/ping",
+                    health: "/health",
+                    api: "/api",
+                    users: "/api/users",
+                    quizzes: "/api/quizzes",
+                    googleAuth: "/api/users/auth/google",
+                    writtenTests: "/api/written-tests",
+                    analytics: "/api/analytics",
+                    gamification: "/api/gamification",
+                    realTimeQuiz: "/api/real-time-quiz",
+                    aiStudyBuddy: "/api/ai-study-buddy"
+                },
+                documentation: "https://github.com/MaXiMo000/Quiz-App"
+            });
+        });
+
         // CORS debug route
         app.get("/debug/cors", (req, res) => {
             const origin = req.headers.origin;
