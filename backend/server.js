@@ -408,6 +408,34 @@ const startServer = async () => {
 
         // API routes
         console.log("🔄 Setting up API routes...");
+        
+        // API root route
+        app.get("/api", (req, res) => {
+            res.status(200).json({
+                message: "Quiz App API",
+                version: "1.0.0",
+                endpoints: {
+                    users: "/api/users",
+                    quizzes: "/api/quizzes",
+                    writtenTests: "/api/written-tests",
+                    analytics: "/api/analytics",
+                    gamification: "/api/gamification",
+                    intelligence: "/api/intelligence",
+                    social: "/api/social",
+                    studyGroups: "/api/study-groups",
+                    aiStudyBuddy: "/api/ai-study-buddy",
+                    realTimeQuiz: "/api/real-time-quiz",
+                    learningPaths: "/api/learning-paths",
+                    reviews: "/api/reviews",
+                    search: "/api/search",
+                    notifications: "/api/notifications",
+                    activity: "/api/activity",
+                    auth: "/api/users/auth/google"
+                },
+                documentation: "https://github.com/MaXiMo000/Quiz-App"
+            });
+        });
+        
         app.use("/api/users/login", authLimiter);
         app.use("/api/users/register", authLimiter);
         app.use("/api/users", userRoutes);
