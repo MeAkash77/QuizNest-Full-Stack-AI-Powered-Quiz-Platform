@@ -1,9 +1,12 @@
 import axios from "axios";
-import config from "../config/config.js";
+
+// ✅ Use environment variables with fallback
+const API_URL = import.meta.env.VITE_API_URL || import.meta.env.VITE_BACKEND_URL || "https://quiznest-full-stack-ai-powered-quiz.onrender.com";
+const API_TIMEOUT = 30000; // 30 seconds
 
 const instance = axios.create({
-    baseURL: config.BACKEND_URL,
-    timeout: config.API_TIMEOUT,
+    baseURL: API_URL,
+    timeout: API_TIMEOUT,
     withCredentials: true, // Important for CORS with credentials
     // Security headers
     headers: {
@@ -18,6 +21,10 @@ instance.interceptors.request.use(
         const token = localStorage.getItem("token");
         if (token && token.trim() !== '' && token !== 'undefined' && token !== 'null') {
             config.headers.Authorization = `Bearer ${token}`;
+        }
+        // Log the request URL in development
+        if (import.meta.env.DEV) {
+            console.log(`📡 API Request: ${config.method.toUpperCase()} ${config.baseURL}${config.url}`);
         }
         return config;
     },
@@ -110,11 +117,12 @@ instance.interceptors.response.use(
             return Promise.reject(error);
         }
 
-        // Handle CORS errors specifically
+        // Handle connection errors specifically
         if (error.code === 'ERR_NETWORK' || !error.response) {
-            console.error('❌ Network/CORS Error:', error.message);
-
-            // Show user-friendly CORS error message
+            console.error('❌ Network Error:', error.message);
+            console.error('❌ API URL being used:', API_URL);
+            
+            // Show user-friendly connection error message
             const notification = document.createElement('div');
             notification.style.cssText = `
                 position: fixed;
@@ -132,7 +140,7 @@ instance.interceptors.response.use(
                 animation: slideIn 0.3s ease-out;
                 max-width: 300px;
             `;
-            notification.innerHTML = '⚠️ Connection issue detected. Please refresh the page.';
+            notification.innerHTML = '⚠️ Connection issue. Please refresh the page.';
 
             document.body.appendChild(notification);
 
