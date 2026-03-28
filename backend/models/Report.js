@@ -6,14 +6,17 @@ const ReportSchema = new Schema({
     quizName:   { type: String, required: true },
     score:      { type: Number, required: true },
     total:      { type: Number, required: true },
+    autoSubmitted: { type: Boolean, default: false },  // ✅ Added for auto-submit tracking
+    reason: { type: String },  // ✅ Added for auto-submit reason
     questions: [{
         questionText:      { type: String,   required: true },
-        options:           { type: [String], required: true }, // ← add this
-        userAnswer:        { type: String,   required: true }, // letter
-        userAnswerText:    { type: String,   required: true }, // ← add this
-        correctAnswer:     { type: String,   required: true }, // letter
-        correctAnswerText: { type: String,   required: true },  // ← add this
-        answerTime:        { type: Number,   required: true }
+        options:           { type: [String], required: true },
+        userAnswer:        { type: String,   required: true },
+        userAnswerText:    { type: String,   required: true },
+        correctAnswer:     { type: String,   required: true },
+        correctAnswerText: { type: String,   required: true },
+        answerTime:        { type: Number,   required: true },
+        difficulty:        { type: String,   default: "medium" }  // ✅ Added to match frontend
     }]
 }, { timestamps: true });
 
