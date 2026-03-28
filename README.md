@@ -19,7 +19,7 @@ For more options, see [START_GUIDE.md](./START_GUIDE.md)
 
 ---
 
-## 🌐 Live Demo -->> [Click Here](https://quiz-app-cp2h.onrender.com/)
+## 🌐 Live Demo -->> [Click Here](https://quiznest-full-stack-ai-powered-quiz-lwom.onrender.com/login)
 
 * **Achievement System** ✅
   * Earn badges like "Quiz Master," "Speed Genius," and "Perfect Score"
