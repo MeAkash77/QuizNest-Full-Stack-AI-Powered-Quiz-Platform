@@ -396,6 +396,12 @@ const TakeQuiz = () => {
 
     // Auto-submit function for interruption scenarios
     const autoSubmitQuiz = useCallback(async (reason = "Quiz interrupted") => {
+        // ✅ Add null check to prevent "Cannot read properties of null"
+        if (!quiz || !quiz.questions) {
+            console.log("Quiz not loaded, cannot auto-submit");
+            return;
+        }
+        
         // Set ref for exitFullScreen to use
         autoSubmitQuizRef.current = autoSubmitQuiz;
 
