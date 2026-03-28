@@ -424,7 +424,8 @@ const TakeQuiz = () => {
             const userAnswerText = chosenIdx != null ? q.options[chosenIdx] : "Not Answered";
 
             const correctIdx = optionLetters.indexOf(q.correctAnswer);
-            const correctAnswerText = q.options[correctIdx];
+            // ✅ FIX: Add fallback value in case options[correctIdx] is undefined
+            const correctAnswerText = q.options[correctIdx] || q.correctAnswer || "Not Available";
 
             if (userAnswer === q.correctAnswer) correctCount++;
 
@@ -434,7 +435,7 @@ const TakeQuiz = () => {
                 userAnswer,
                 userAnswerText,
                 correctAnswer: q.correctAnswer,
-                correctAnswerText,
+                correctAnswerText,  // ← FIXED
                 answerTime: answerTimes[idx] || 0,
                 difficulty: q.difficulty || "medium"
             };
@@ -590,7 +591,8 @@ const TakeQuiz = () => {
                         const userAnswerText = chosenIdx != null ? q.options[chosenIdx] : "Not Answered";
 
                         const correctIdx = optionLetters.indexOf(q.correctAnswer);
-                        const correctAnswerText = q.options[correctIdx];
+                        // ✅ FIX: Add fallback value in case options[correctIdx] is undefined
+                        const correctAnswerText = q.options[correctIdx] || q.correctAnswer || "Not Available";
 
                         if (userAnswer === q.correctAnswer) correctCount++;
 
@@ -700,7 +702,8 @@ const TakeQuiz = () => {
             const userAnswerText = chosenIdx != null ? q.options[chosenIdx] : "Not Answered";
 
             const correctIdx = optionLetters.indexOf(q.correctAnswer);
-            const correctAnswerText = q.options[correctIdx];
+            // ✅ FIX: Add fallback value in case options[correctIdx] is undefined
+            const correctAnswerText = q.options[correctIdx] || q.correctAnswer || "Not Available";
 
             if (userAnswer === q.correctAnswer) correctCount++;
 
@@ -710,7 +713,7 @@ const TakeQuiz = () => {
                 userAnswer,
                 userAnswerText,
                 correctAnswer: q.correctAnswer,
-                correctAnswerText,
+                correctAnswerText,  // ← FIXED
                 answerTime: answerTimes[idx] || 0,
                 difficulty: q.difficulty || "medium"
             };
