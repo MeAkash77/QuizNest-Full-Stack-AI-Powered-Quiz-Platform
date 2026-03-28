@@ -68,7 +68,8 @@ export const unlockThemesForLevel = (user) => {
 export async function createReport(req, res) {
     logger.info(`Creating report for user ${req.body.username}`);
     try {
-        const { username, quizName, score, total, questions } = req.body;
+        // ✅ FIX: Added autoSubmitted and reason to destructuring
+        const { username, quizName, score, total, questions, autoSubmitted, reason } = req.body;
         const userId = req.user?.id; // Get user ID from JWT token
 
         if (!username || !quizName || !questions || questions.length === 0) {
@@ -80,8 +81,28 @@ export async function createReport(req, res) {
             return sendValidationError(res, errors);
         }
 
-        const report = new Report({ username, quizName, score, total, questions });
+        // ✅ FIX: Validate each question has required fields
+        for (let i = 0; i < questions.length; i++) {
+            const q = questions[i];
+            if (!q.questionText || !q.options || !q.userAnswer || !q.userAnswerText || !q.correctAnswer || !q.correctAnswerText) {
+                logger.warn(`Question ${i} missing required fields:`, q);
+                return sendValidationError(res, { questions: `Question ${i + 1} is missing required fields` });
+            }
+        }
+
+        // ✅ FIX: Added autoSubmitted and reason to the report creation
+        const report = new Report({ 
+            username, 
+            quizName, 
+            score, 
+            total, 
+            questions,
+            autoSubmitted: autoSubmitted || false,
+            reason: reason || null
+        });
         await report.save();
+        
+        logger.info(`Report saved with ID: ${report._id}, autoSubmitted: ${autoSubmitted || false}`);
 
         // ✅ Use user ID from JWT token first, fallback to username lookup
         let user;
