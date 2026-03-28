@@ -68,41 +68,99 @@ export const unlockThemesForLevel = (user) => {
 export async function createReport(req, res) {
     logger.info(`Creating report for user ${req.body.username}`);
     try {
-        // ✅ FIX: Added autoSubmitted and reason to destructuring
+        // ✅ Log incoming data for debugging
+        console.log("📝 Received report data:", {
+            username: req.body.username,
+            quizName: req.body.quizName,
+            score: req.body.score,
+            total: req.body.total,
+            questionsCount: req.body.questions?.length,
+            autoSubmitted: req.body.autoSubmitted,
+            hasReason: !!req.body.reason
+        });
+        
+        // ✅ Log first question structure for debugging
+        if (req.body.questions && req.body.questions.length > 0) {
+            console.log("📊 First question keys:", Object.keys(req.body.questions[0]));
+            console.log("📊 Sample question:", JSON.stringify(req.body.questions[0], null, 2));
+        }
+
         const { username, quizName, score, total, questions, autoSubmitted, reason } = req.body;
         const userId = req.user?.id; // Get user ID from JWT token
 
-        if (!username || !quizName || !questions || questions.length === 0) {
-            logger.warn("Missing required fields for report creation");
-            const errors = {};
-            if (!username) errors.username = "Username is required";
-            if (!quizName) errors.quizName = "Quiz name is required";
-            if (!questions || questions.length === 0) errors.questions = "Questions are required";
-            return sendValidationError(res, errors);
+        // ✅ Detailed validation with specific error messages
+        const validationErrors = {};
+        if (!username) validationErrors.username = "Username is required";
+        if (!quizName) validationErrors.quizName = "Quiz name is required";
+        if (score === undefined || score === null) validationErrors.score = "Score is required";
+        if (total === undefined || total === null) validationErrors.total = "Total is required";
+        if (!questions || !Array.isArray(questions)) validationErrors.questions = "Questions array is required";
+        
+        if (Object.keys(validationErrors).length > 0) {
+            logger.warn("Missing required fields:", validationErrors);
+            return res.status(400).json({ 
+                error: "Missing required fields", 
+                details: validationErrors,
+                received: { username, quizName, score, total, questionsLength: questions?.length }
+            });
         }
 
-        // ✅ FIX: Validate each question has required fields
+        if (questions.length === 0) {
+            logger.warn("Questions array is empty");
+            return res.status(400).json({ error: "Questions array cannot be empty" });
+        }
+
+        // ✅ Validate each question has required fields
+        const missingQuestionFields = [];
         for (let i = 0; i < questions.length; i++) {
             const q = questions[i];
-            if (!q.questionText || !q.options || !q.userAnswer || !q.userAnswerText || !q.correctAnswer || !q.correctAnswerText) {
-                logger.warn(`Question ${i} missing required fields:`, q);
-                return sendValidationError(res, { questions: `Question ${i + 1} is missing required fields` });
+            const requiredFields = ['questionText', 'options', 'userAnswer', 'userAnswerText', 'correctAnswer', 'correctAnswerText', 'answerTime'];
+            const missing = requiredFields.filter(field => !q[field] && q[field] !== 0);
+            if (missing.length > 0) {
+                missingQuestionFields.push({ index: i, missing, questionText: q.questionText?.substring(0, 50) });
             }
         }
+        
+        if (missingQuestionFields.length > 0) {
+            logger.warn("Questions missing required fields:", missingQuestionFields);
+            return res.status(400).json({ 
+                error: "Questions missing required fields", 
+                details: missingQuestionFields 
+            });
+        }
 
-        // ✅ FIX: Added autoSubmitted and reason to the report creation
+        // ✅ Ensure numeric values are numbers
+        const numericScore = Number(score);
+        const numericTotal = Number(total);
+        
+        if (isNaN(numericScore) || isNaN(numericTotal)) {
+            logger.warn(`Invalid numeric values: score=${score}, total=${total}`);
+            return res.status(400).json({ error: "Score and total must be valid numbers" });
+        }
+
+        // ✅ Create report with all fields
         const report = new Report({ 
             username, 
             quizName, 
-            score, 
-            total, 
-            questions,
-            autoSubmitted: autoSubmitted || false,
+            score: numericScore,
+            total: numericTotal,
+            questions: questions.map(q => ({
+                questionText: q.questionText,
+                options: Array.isArray(q.options) ? q.options : [],
+                userAnswer: q.userAnswer,
+                userAnswerText: q.userAnswerText,
+                correctAnswer: q.correctAnswer,
+                correctAnswerText: q.correctAnswerText,
+                answerTime: Number(q.answerTime) || 0,
+                difficulty: q.difficulty || "medium"
+            })),
+            autoSubmitted: autoSubmitted === true || autoSubmitted === "true",
             reason: reason || null
         });
+        
         await report.save();
         
-        logger.info(`Report saved with ID: ${report._id}, autoSubmitted: ${autoSubmitted || false}`);
+        logger.info(`✅ Report saved with ID: ${report._id}, autoSubmitted: ${autoSubmitted || false}`);
 
         // ✅ Use user ID from JWT token first, fallback to username lookup
         let user;
@@ -138,7 +196,8 @@ export async function createReport(req, res) {
 
         if (!user) {
             logger.error(`User not found - userId: ${userId}, username: ${username}`);
-            return sendNotFound(res, "User");
+            // Still return success for report creation even if user not found
+            return sendCreated(res, report, "Report saved but user not found for XP update");
         }
 
         // ✅ Ensure totalXP field exists for all users (especially Google OAuth users)
@@ -151,7 +210,7 @@ export async function createReport(req, res) {
             user.badges = [];
         }
         let earnedBadges = [];
-        if (score === total && !user.badges.includes("Perfect Score")) {
+        if (numericScore === numericTotal && !user.badges.includes("Perfect Score")) {
             user.badges.push("Perfect Score");
             earnedBadges.push("Perfect Score");
         }
@@ -188,7 +247,7 @@ export async function createReport(req, res) {
         }
 
         // 🎯 XP for score
-        const xpGained = score * 10;
+        const xpGained = numericScore * 10;
         let totalXPGained = xpGained;
 
         // Create XPLog entry with UTC date to match streak queries
@@ -290,15 +349,15 @@ export async function createReport(req, res) {
             await createActivity(user._id, "quiz_completed", {
                 quizId: report._id,
                 quizName,
-                score,
-                total
+                score: numericScore,
+                total: numericTotal
             });
 
-            await createNotification(user._id, "quiz_completed", "Quiz Completed!", `You completed "${quizName}" with a score of ${score}/${total}`, {
+            await createNotification(user._id, "quiz_completed", "Quiz Completed!", `You completed "${quizName}" with a score of ${numericScore}/${numericTotal}`, {
                 quizId: report._id,
                 quizName,
-                score,
-                total
+                score: numericScore,
+                total: numericTotal
             });
         } catch (error) {
             logger.error({ message: "Error creating activity/notification for quiz completion", error: error.message });
@@ -309,7 +368,12 @@ export async function createReport(req, res) {
         return sendCreated(res, report, "Report saved and bonuses applied!");
     } catch (error) {
         logger.error({ message: "Error saving report", error: error.message, stack: error.stack });
-        throw new AppError("Failed to save report", 500);
+        // Return detailed error to frontend for debugging
+        return res.status(500).json({ 
+            error: "Failed to save report", 
+            details: error.message,
+            stack: process.env.NODE_ENV === "development" ? error.stack : undefined
+        });
     }
 }
 
