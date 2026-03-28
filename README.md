@@ -291,7 +291,7 @@ A powerful admin dashboard providing full control of platform operations:
 
 ## 👤 Author
 
-Developed by [MaXiMo000](https://github.com/MaXiMo000)
+Developed by https://github.com/MeAkash77/QuizNest-Full-Stack-AI-Powered-Quiz-Platform.git
 All rights reserved © 2025
 
 📩 For licensing or collaboration inquiries, feel free to reach out.
