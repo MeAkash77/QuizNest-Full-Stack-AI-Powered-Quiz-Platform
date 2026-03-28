@@ -730,6 +730,7 @@ const TakeQuiz = () => {
             const user = JSON.parse(localStorage.getItem("user"));
             const totalTimeSpent = Object.values(answerTimes).reduce((sum, time) => sum + time, 0);
 
+            // ✅ FIX: Added autoSubmitted and reason to the report submission
             // Use Promise.allSettled to handle multiple async operations without blocking
             const results = await Promise.allSettled([
                 axios.post(`/api/reports`, {
@@ -738,6 +739,8 @@ const TakeQuiz = () => {
                     score: scoreAchieved,
                     total: totalMarks,
                     questions: detailedQuestions,
+                    autoSubmitted: false,
+                    reason: null
                 }),
                 
                 axios.post(`/api/quizzes/${id}/stats`, {
