@@ -118,7 +118,7 @@ For more options, see [START_GUIDE.md](./START_GUIDE.md)
   * Weekly and monthly top scorers
   * Tournament-specific rankings
   * Multiplayer battle statistics
-  * Promotes user engagement and competitiont the live site](https://quiz-app-cp2h.onrender.com/)
+  * Promotes user engagement and competitiont the live site](https://quiznest-full-stack-ai-powered-quiz-lwom.onrender.com/login)
 
 ---
 
